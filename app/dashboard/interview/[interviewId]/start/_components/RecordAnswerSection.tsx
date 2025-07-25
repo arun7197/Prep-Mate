@@ -72,7 +72,7 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData }: 
   };
 
   const generateFeedbackPrompt = () => {
-    return `Question: ${interviewQuestion[activeIndex]?.text}, User Answer: ${userAnswer}. Based on this, provide a rating out of 10 and short feedback (3-5 lines) for improvement in JSON format with fields 'rating' and 'feedback'.`;
+    return `Question: ${interviewQuestion[activeIndex]?.text}, User Answer: ${userAnswer}. Based on this, provide a rating out of 5 and short feedback (3-5 lines) for improvement in JSON format with fields 'rating' and 'feedback'.`;
   };
 
   const saveUserAnswer = async () => {
