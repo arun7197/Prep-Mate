@@ -31,7 +31,7 @@ function InterviewItemCard({interviewData}:{interviewData:InterviewData}) {
             
             <div className="flex items-center">
               <CalendarDays className="w-4 h-4 mr-2" />
-              <span>{interviewData?.createdAt ? new Date(interviewData.createdAt).toLocaleDateString() : 'No date'}</span>
+              <span>{interviewData?.createdAt}</span>
             </div>
           </div>
         </div>
