@@ -20,8 +20,6 @@ import moment from 'moment';
 import { useRouter } from 'next/navigation'
 
 
-const myuuid = uuidv4();
-console.log(myuuid);
 
 
 
@@ -36,51 +34,49 @@ function AddNewInterview() {
     const router = useRouter()
 
     const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        setIsLoading(true);
-        e.preventDefault();
-        //console.log(jobDescription, jobPosition)
+    e.preventDefault();
+    setIsLoading(true);
 
+    const currentMockId = uuidv4();
+
+    try {
         const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY as string);
-        const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+        const model = genAI.getGenerativeModel(
+            { model: "gemini-2.5-flash" },
+            { apiVersion: "v1" }
+        );
 
-        const InputPrompt = `Job Position: ${jobPosition}, Job Description:${jobDescription} , Years of Experience: ${experience}, Depends on this information please give me 5 Interview question with Answer in Json Format, Give Question and Answer as field in JSON`
-        try {
-            const result = await model.generateContent(InputPrompt);
-            const response = await result.response;
-            const text = response.text();
-            // Remove any markdown code block syntax and clean the response
-            const cleanJson = text.replace(/```json\n?|```/g, '').trim();
-            //  const parsedResponse = JSON.parse(cleanJson);
+        const InputPrompt = `Job Position: ${jobPosition}, Job Description: ${jobDescription}, Years of Experience: ${experience}. 
+Give me 5 Interview questions with Answers in JSON format. 
+Return ONLY the JSON array. No preamble, no "Here is your JSON", no markdown. 
+Format: [{"question": "...", "answer": "..."}]`;
 
-            //  setJsonResp(parsedResponse)
+        const result = await model.generateContent(InputPrompt);
+        const response = await result.response;
+        const text = response.text();
+        const cleanJson = text.replace(/```json\n?|```/g, '').trim();
 
-            if (cleanJson) {
-                const resp = await db.insert(MockInterview)
-                    .values({
-                        mockId: myuuid,
-                        jsonMockResp: cleanJson,
-                        jobDesc: jobDescription,
-                        jobPosition: jobPosition,
-                        jobExperience: experience.toString(),
-                        createdBy: user?.primaryEmailAddress?.emailAddress ?? "",
-                        createdAt: moment().format('DD-MM-yyyy')
-                    }).returning({ mockId: MockInterview.mockId })
-                //console.log("inserted Id", resp);
+        if (cleanJson) {
+            const resp = await db.insert(MockInterview)
+                .values({
+                    mockId: currentMockId,
+                    jsonMockResp: cleanJson,
+                    jobDesc: jobDescription,
+                    jobPosition: jobPosition,
+                    jobExperience: experience.toString(),
+                    createdBy: user?.primaryEmailAddress?.emailAddress ?? "",
+                    createdAt: moment().format('DD-MM-yyyy')
+                }).returning({ mockId: MockInterview.mockId });
 
-                setOpenDialog(false);
-                router.push('/dashboard/interview/' + resp[0]?.mockId)
-            }
-            
-            else {
-                console.log("Error");
-            }
-
-            
-        } catch (error) {
-            console.error("Error calling Gemini API:", error);
+            setOpenDialog(false);
+            router.push('/dashboard/interview/' + resp[0]?.mockId);
         }
-        setIsLoading(false)
+    } catch (error) {
+        console.error("Error calling Gemini API:", error);
+    } finally {
+        setIsLoading(false);
     }
+};
     return (
         <div>
             <div className='p-10 border rounded-lg bg-secondary hover:scale-105 hover:shadow cursor-pointer transition-all'>

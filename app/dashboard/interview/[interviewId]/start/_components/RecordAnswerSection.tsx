@@ -34,13 +34,18 @@ interface QuestionsSectionProps {
   interviewQuestion: Question[];
   activeIndex: number;
   interviewData: InterviewData;
+  onLoadingChange?: (loading: boolean) => void;
 }
 
-const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData }: QuestionsSectionProps) => {
+const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, onLoadingChange }: QuestionsSectionProps) => {
   const { user } = useUser();
   const [userAnswer, setUserAnswer] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [lastProcessedIndex, setLastProcessedIndex] = useState(0);
+
+  useEffect(() => {
+    onLoadingChange?.(isLoading);
+  }, [isLoading, onLoadingChange]);
 
   const {
     isRecording,
@@ -80,7 +85,7 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData }: 
 
     try {
       const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY as string);
-      const model = genAI.getGenerativeModel({ model: "gemini-2.5-pro" });
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const result = await model.generateContent(generateFeedbackPrompt());
       const rawText = await result.response.text();

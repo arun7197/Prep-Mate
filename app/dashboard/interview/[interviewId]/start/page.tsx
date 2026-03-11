@@ -36,30 +36,35 @@ const interviewId = params.interviewId!;
 const [interviewData, setInterviewData] = useState<InterviewData | undefined>(undefined);
   const [interviewQuestion, setInterviewQuestion] = useState<Question[]>([]);
   const [activeIndex, setActiveIndex] = useState<number>(0);
+  const [isRecordLoading, setIsRecordLoading] = useState(false);
 
   const GetInterviewDetails = useCallback(async () => {
-    //console.log("Fetching interview details for ID:", interviewId);
     try {
-if (!interviewId) return; // Ensure interviewId is defined
-const data = await db
+      if (!interviewId) return;
+      const data = await db
         .select()
         .from(MockInterview)
         .where(eq(MockInterview.mockId, interviewId));
 
       if (data.length > 0) {
         setInterviewData(data[0]);
-        const jsonMockResp = JSON.parse(data[0].jsonMockResp);
+        
+        // --- SAFE PARSING START ---
+        let rawContent = data[0].jsonMockResp;
+        
+        // Regular expression to find content between [ ] or { } 
+        // This ignores "Here are your questions:" text.
+        const jsonMatch = rawContent.match(/\[[\s\S]*\]|\{[\s\S]*\}/);
+        const cleanContent = jsonMatch ? jsonMatch[0] : rawContent;
+        
+        const jsonMockResp = JSON.parse(cleanContent);
+        // --- SAFE PARSING END ---
 
-        jsonMockResp.forEach((q: any, index: number) => {
-          //console.log(`Question ${index + 1}:`, q.Question || q.text);
-          //console.log(`Answer ${index + 1}:`, q.Answer || q.answered || q.answer || "No answer found"); // Updated to check possible keys
-        });
-
-const formattedQuestions = jsonMockResp.map((q: { Question?: string; text?: string; Answer?: string; answered?: string; answer?: string; }, index: number) => ({
-  id: index + 1,
-  text: q.Question || q.text || `Question ${index + 1}`,
-  answer: q.Answer || q.answered || q.answer || "",
-}));
+        const formattedQuestions = jsonMockResp.map((q: any, index: number) => ({
+          id: index + 1,
+          text: q.Question || q.question || q.text || `Question ${index + 1}`,
+          answer: q.Answer || q.answer || q.answered || "",
+        }));
 
         setInterviewQuestion(formattedQuestions);
       }
@@ -67,6 +72,7 @@ const formattedQuestions = jsonMockResp.map((q: { Question?: string; text?: stri
       console.error('Error fetching interview details:', error);
     }
   }, [interviewId]);
+
 
   useEffect(() => {
     if (interviewId) GetInterviewDetails();
@@ -89,6 +95,7 @@ const formattedQuestions = jsonMockResp.map((q: { Question?: string; text?: stri
             interviewQuestion={interviewQuestion}
             activeIndex={activeIndex}
             interviewData={interviewData}
+            onLoadingChange={setIsRecordLoading}
           />
         </Card>
       </div>
@@ -97,7 +104,7 @@ const formattedQuestions = jsonMockResp.map((q: { Question?: string; text?: stri
         <Button 
           variant="outline"
           onClick={() => setActiveIndex(activeIndex - 1)}
-          disabled={activeIndex <= 0}
+          disabled={activeIndex <= 0 || isRecordLoading}
           className="hover:bg-slate-100"
         >
           Previous Question
@@ -107,6 +114,7 @@ const formattedQuestions = jsonMockResp.map((q: { Question?: string; text?: stri
           <Link href={"/dashboard/interview/"+interviewData?.mockId+"/feedback"}>
           <Button 
             variant="default"
+            disabled={isRecordLoading}
             className="bg-green-600 hover:bg-green-700"
           >
             End Interview
@@ -116,7 +124,7 @@ const formattedQuestions = jsonMockResp.map((q: { Question?: string; text?: stri
           <Button 
             variant="default"
             onClick={() => setActiveIndex(activeIndex + 1)}
-            disabled={activeIndex >= interviewQuestion.length - 1}
+            disabled={activeIndex >= interviewQuestion.length - 1 || isRecordLoading}
             className="bg-blue-600 hover:bg-blue-700"
           >
             Next Question
