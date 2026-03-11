@@ -19,7 +19,8 @@ interface InterviewData {
   createdAt: string | null;
   mockId: string;
 }
-function Interview({params}: {params: {interviewId: string}}) {
+function Interview({params}: {params: Promise<{interviewId: string}>}) {
+    const { interviewId } = React.use(params);
     const [webCamEnable,setWebCamEnable] = useState(false)
     const [interviewData, setInterviewData] = useState<InterviewData | null>(null);
     
@@ -28,7 +29,7 @@ function Interview({params}: {params: {interviewId: string}}) {
 
    const GetInterviewDetails = useCallback(async () => {
      try {
-       const data = await db.select().from(MockInterview).where(eq(MockInterview.mockId, params.interviewId))
+       const data = await db.select().from(MockInterview).where(eq(MockInterview.mockId, interviewId))
        //console.log(data)
        if (data.length > 0) {
          setInterviewData(data[0]);
@@ -36,12 +37,11 @@ function Interview({params}: {params: {interviewId: string}}) {
      } catch (error) {
        console.error('Error fetching interview details:', error);
      }
-   }, [params.interviewId]);
+   }, [interviewId]);
 
    useEffect(() => {
-     console.log(params)
      GetInterviewDetails();
-   }, [params, GetInterviewDetails])
+   }, [interviewId, GetInterviewDetails])
    
   return (
     <div className='container mx-auto px-4 py-12 max-w-6xl'>
@@ -115,7 +115,7 @@ function Interview({params}: {params: {interviewId: string}}) {
             </div>
         </div>
         <div className="mt-12 flex justify-center">
-            <Link href={'/dashboard/interview/' + params.interviewId + '/start/'}>
+            <Link href={'/dashboard/interview/' + interviewId + '/start/'}>
             <Button 
                 className="  "
             >

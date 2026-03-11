@@ -24,17 +24,18 @@ interface UserAnswerData {
   createdAt: string | null;
 }
 
-const Feedback = ({params}: {params: {interviewId: string}}) => {
+const Feedback = ({params}: {params: Promise<{interviewId: string}>}) => {
+  const { interviewId } = React.use(params);
   const [feedbackList, setFeedbackList] = useState<UserAnswerData[]>([]);
   
   useEffect(() => {
     getFeedback()
-  }, [params.interviewId])
+  }, [interviewId])
 
   const getFeedback = async () => {
     const result = await db.select()
       .from(UserAnswer)
-      .where(eq(UserAnswer.mockIdRef, params.interviewId))
+      .where(eq(UserAnswer.mockIdRef, interviewId))
       .orderBy(UserAnswer.id)
     setFeedbackList(result)
   }

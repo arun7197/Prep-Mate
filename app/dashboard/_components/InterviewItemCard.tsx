@@ -36,19 +36,21 @@ function InterviewItemCard({interviewData}:{interviewData:InterviewData}) {
           </div>
         </div>
 
-        <div className="flex space-x-3">
-          <Link href={`/dashboard/interview/${interviewData?.mockId}/feedback`} className="flex-1">
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/dashboard/interview/${interviewData?.mockId}/feedback`} className="flex-1 min-w-[100px]">
             <Button 
               variant="outline"
-              className="w-full hover:bg-gray-100 dark:hover:bg-gray-700"
+              size="sm"
+              className="w-full hover:bg-gray-100 dark:hover:bg-gray-700 text-sm"
             >
               Feedback
             </Button>
           </Link>
           
-          <Link href={`/dashboard/interview/${interviewData?.mockId}/`} className="flex-1">
+          <Link href={`/dashboard/interview/${interviewData?.mockId}/`} className="flex-1 min-w-[120px]">
             <Button 
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              size="sm"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white text-sm"
             >
               Start Interview
             </Button>
