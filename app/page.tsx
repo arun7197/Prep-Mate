@@ -11,15 +11,22 @@ function Home() {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-slate-50 to-slate-100 dark:from-slate-900 dark:to-slate-800">
-      {/* Header */}
       <header className="backdrop-blur-md bg-white/70 dark:bg-slate-900/70 sticky top-0 z-50 border-b border-slate-200 dark:border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <Link href={"/"}>
-            <Image src="/logo.svg" alt="PrepMate Logo" width={140} height={40} className="w-auto h-8" />
-            </Link>
+            <Link href="/">
+        <div className="m-3 overflow-hidden w-[50px] md:w-[150px] h-[40px] md:h-auto">
+          <Image 
+            src="/logo.svg" 
+            width={150} 
+            height={100} 
+            alt="logo" 
+            className="max-w-none w-[150px] h-auto" 
+          />
+        </div>
+      </Link>
             
-            <nav className="flex items-center space-x-4">
+            <nav className="flex items-center space-x-4 ml-auto">
               <Link href="/" className="text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white transition">Home</Link>
               <Link href="/dashboard">
                 <Button variant="ghost" className="hover:bg-slate-100 dark:hover:bg-slate-800">Dashboard</Button>

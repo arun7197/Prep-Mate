@@ -1,9 +1,9 @@
 "use client";
+/// <reference types="dom-speech-recognition" />
 
 import React, { useEffect, useState, useRef } from 'react';
 import Image from 'next/image';
 import Webcam from 'react-webcam';
-import useSpeechToText from 'react-hook-speech-to-text';
 import { Mic } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
@@ -13,6 +13,36 @@ import { UserAnswer } from '@/utils/schema';
 import moment from 'moment';
 import { useUser } from '@clerk/nextjs';
 
+// Speech API Types
+interface SpeechRecognitionEvent extends Event {
+  readonly resultIndex: number;
+  readonly results: SpeechRecognitionResultList;
+}
+
+interface SpeechRecognitionErrorEvent extends Event {
+  readonly error: string;
+  readonly message: string;
+}
+
+interface SpeechRecognition extends EventTarget {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEvent) => void) | null;
+  onend: (() => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEvent) => void) | null;
+  start(): void;
+  stop(): void;
+}
+
+declare global {
+  interface Window {
+    SpeechRecognition: new () => SpeechRecognition;
+    webkitSpeechRecognition: new () => SpeechRecognition;
+  }
+}
+
+// Types
 interface Question {
   id: number;
   text: string;
@@ -37,23 +67,28 @@ interface QuestionsSectionProps {
   onLoadingChange?: (loading: boolean) => void;
 }
 
-const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, onLoadingChange }: QuestionsSectionProps) => {
+type AIResponse = {
+  rating: number;
+  feedback: string;
+};
+
+const RecordAnswerSection = ({
+  interviewQuestion,
+  activeIndex,
+  interviewData,
+  onLoadingChange,
+}: QuestionsSectionProps) => {
   const { user } = useUser();
+
   const [userAnswer, setUserAnswer] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [lastProcessedIndex, setLastProcessedIndex] = useState(0);
-
-  // Separate state (for re-renders) + ref (for async/effect logic)
   const [isUserRecording, setIsUserRecording] = useState(false);
+
   const isUserRecordingRef = useRef(false);
-
-  // Prevents double-save when manual stop + auto-stop both fire
-  const isSavingRef = useRef(false);
-
-  // Always holds the latest userAnswer for use inside async functions
   const userAnswerRef = useRef('');
+  const isSavingRef = useRef(false);
+  const recognitionRef = useRef<SpeechRecognition | null>(null);
 
-  // Helper to keep ref and state in sync
   const setRecordingState = (val: boolean) => {
     isUserRecordingRef.current = val;
     setIsUserRecording(val);
@@ -67,74 +102,89 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
     onLoadingChange?.(isLoading);
   }, [isLoading, onLoadingChange]);
 
-  const {
-    isRecording,
-    results,
-    setResults,
-    startSpeechToText,
-    stopSpeechToText,
-  } = useSpeechToText({
-    continuous: true,
-    useLegacyResults: false,
-  });
+  const resetAnswer = () => {
+    setUserAnswer('');
+    userAnswerRef.current = '';
+  };
 
-  // Accumulate transcript chunks into userAnswer
-  useEffect(() => {
-    if (results.length > lastProcessedIndex) {
-      const newResults = results.slice(lastProcessedIndex);
-      newResults.forEach((result) => {
-        if (typeof result !== 'string') {
-          setUserAnswer((prev) => prev + result.transcript + ' ');
+  const startRecording = () => {
+    const SpeechRecognitionAPI =
+      window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (!SpeechRecognitionAPI) {
+      toast.error('Speech recognition is not supported on this browser.');
+      return;
+    }
+
+    const recognition = new SpeechRecognitionAPI();
+
+    recognition.continuous = true; // 🔥 FIX
+    recognition.interimResults = false;
+    recognition.lang = 'en-US';
+
+    recognition.onresult = (event: SpeechRecognitionEvent) => {
+      let transcript = '';
+
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          transcript += event.results[i][0].transcript + ' ';
         }
-      });
-      setLastProcessedIndex(results.length);
-    }
-  }, [results, lastProcessedIndex]);
-
-  // Detects mobile browser auto-stopping (continuous: true is ignored on mobile)
-  // When that happens, save immediately instead of trying to restart
-  useEffect(() => {
-    if (!isRecording && isUserRecordingRef.current) {
-      setRecordingState(false);
-
-      const currentAnswer = userAnswerRef.current.trim();
-      if (currentAnswer.length < 10) {
-        toast('Answer is too short. Please try again.');
-        setUserAnswer('');
-        userAnswerRef.current = '';
-        setResults([]);
-        setLastProcessedIndex(0);
-        return;
       }
-      saveUserAnswer(currentAnswer);
-    }
-  }, [isRecording]);
+
+      if (transcript) {
+        setUserAnswer((prev) => prev + transcript);
+        userAnswerRef.current += transcript;
+      }
+
+      console.log("User speaking...");
+    };
+
+    // 🔥 FIX: Auto-restart instead of stopping
+    recognition.onend = () => {
+      if (isUserRecordingRef.current) {
+        try {
+          recognition.start();
+        } catch (err) {
+          console.log("Restart error:", err);
+        }
+      }
+    };
+
+    recognition.onerror = (event: SpeechRecognitionErrorEvent) => {
+      if (event.error === 'no-speech') return;
+
+      console.error('Speech recognition error:', event.error);
+      toast.error('Recording error. Please try again.');
+
+      setRecordingState(false);
+      resetAnswer();
+    };
+
+    recognition.start();
+    recognitionRef.current = recognition;
+  };
 
   const handleRecordingToggle = () => {
     if (isUserRecordingRef.current) {
-      // User manually stopping
+      // STOP
       setRecordingState(false);
-      stopSpeechToText();
+      recognitionRef.current?.stop();
 
-      const currentAnswer = userAnswerRef.current.trim();
-      if (currentAnswer.length < 10) {
+      const answer = userAnswerRef.current.trim();
+
+      if (answer.length < 10) {
         toast('Answer is too short. Please try again.');
-        setUserAnswer('');
-        userAnswerRef.current = '';
-        setResults([]);
-        setLastProcessedIndex(0);
+        resetAnswer();
         return;
       }
-      saveUserAnswer(currentAnswer);
+
+      saveUserAnswer(answer);
     } else {
-      // User starting a new recording — reset everything
-      setRecordingState(true);
+      // START
       isSavingRef.current = false;
-      setUserAnswer('');
-      userAnswerRef.current = '';
-      setResults([]);
-      setLastProcessedIndex(0);
-      startSpeechToText();
+      resetAnswer();
+      setRecordingState(true);
+      startRecording();
     }
   };
 
@@ -143,37 +193,47 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
   };
 
   const saveUserAnswer = async (answer: string) => {
-    // Guard against double-save (manual stop + auto-stop firing together)
     if (isSavingRef.current) return;
+
     isSavingRef.current = true;
     setIsLoading(true);
 
     try {
-      const genAI = new GoogleGenerativeAI(process.env.NEXT_PUBLIC_GEMINI_API_KEY as string);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const genAI = new GoogleGenerativeAI(
+        process.env.NEXT_PUBLIC_GEMINI_API_KEY as string
+      );
 
-      const result = await model.generateContent(generateFeedbackPrompt(answer));
+      const model = genAI.getGenerativeModel({
+        model: 'gemini-2.5-flash',
+      });
+
+      const result = await model.generateContent(
+        generateFeedbackPrompt(answer)
+      );
+
       const rawText = await result.response.text();
       const cleanJson = rawText.replace(/```json\n?|```/g, '').trim();
-      const parsed = JSON.parse(cleanJson);
+
+      const parsed: AIResponse = JSON.parse(cleanJson);
+
+      if (!parsed.rating || !parsed.feedback) {
+        throw new Error('Invalid AI response');
+      }
 
       const response = await db.insert(UserAnswer).values({
-        mockIdRef: interviewData.mockId,
-        question: interviewQuestion[activeIndex]?.text,
-        correctAns: interviewQuestion[activeIndex]?.answer,
-        userAns: answer,
-        feedback: parsed.feedback,
-        rating: parsed.rating,
-        createdAt: moment().format('DD-MM-yyyy'),
-        userEmail: user?.primaryEmailAddress?.emailAddress ?? '',
-      });
+  mockIdRef: String(interviewData.mockId), // ✅ ensure string
+  question: interviewQuestion[activeIndex]?.text ?? '',
+  correctAns: interviewQuestion[activeIndex]?.answer ?? '',
+  userAns: answer,
+  feedback: parsed.feedback,
+  rating: String(parsed.rating), // 🔥 FIX HERE
+  createdAt: moment().format('DD-MM-yyyy'),
+  userEmail: user?.primaryEmailAddress?.emailAddress ?? '',
+});
 
       if (response) {
         toast.success('Answer saved successfully.');
-        setUserAnswer('');
-        userAnswerRef.current = '';
-        setResults([]);
-        setLastProcessedIndex(0);
+        resetAnswer();
       }
     } catch (error) {
       console.error('Error saving answer:', error);
@@ -187,7 +247,13 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
   return (
     <div className="flex flex-col">
       <div className="flex flex-col justify-center items-center my-20 rounded-lg p-5 relative">
-        <Image src="/webcam.jpg" alt="webcam logo" width={200} height={200} className="absolute" />
+        <Image
+          src="/webcam.jpg"
+          alt="webcam logo"
+          width={200}
+          height={200}
+          className="absolute"
+        />
         <Webcam mirrored style={{ height: 300, width: '100%', zIndex: 10 }} />
       </div>
 
@@ -195,11 +261,17 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
         disabled={isLoading}
         onClick={handleRecordingToggle}
         className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
-          isUserRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
+          isUserRecording
+            ? 'bg-red-500 hover:bg-red-600'
+            : 'bg-primary hover:bg-primary/90'
         }`}
       >
         <Mic className={`h-5 w-5 ${isUserRecording ? 'animate-pulse' : ''}`} />
-        {isLoading ? 'Saving...' : isUserRecording ? 'Stop Recording' : 'Record Answer'}
+        {isLoading
+          ? 'Saving...'
+          : isUserRecording
+          ? 'Stop Recording'
+          : 'Record Answer'}
       </Button>
     </div>
   );
