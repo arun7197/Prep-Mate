@@ -41,6 +41,7 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
   const { user } = useUser();
   const [userAnswer, setUserAnswer] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  const [shouldSave, setShouldSave] = useState(false);
   const [lastProcessedIndex, setLastProcessedIndex] = useState(0);
 
   useEffect(() => {
@@ -61,20 +62,27 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
   const handleRecordingToggle = () => {
     if (isRecording) {
       stopSpeechToText();
-
-      setTimeout(() => {
-        if (userAnswer.trim().length < 10) {
-          toast("Answer is too short. Please try again.");
-          return;
-        }
-        saveUserAnswer();
-      }, 1500);
+      setShouldSave(true);
     } else {
       setUserAnswer('');
+      setResults([]);
       setLastProcessedIndex(0);
+      setShouldSave(false);
       startSpeechToText();
     }
   };
+
+  useEffect(() => {
+    if (!isRecording && shouldSave) {
+      if (userAnswer.trim().length < 10) {
+        toast("Answer is too short. Please try again.");
+        setShouldSave(false);
+        return;
+      }
+      saveUserAnswer();
+      setShouldSave(false);
+    }
+  }, [isRecording, shouldSave, userAnswer]);
 
   const generateFeedbackPrompt = () => {
     return `Question: ${interviewQuestion[activeIndex]?.text}, User Answer: ${userAnswer}. Based on this, provide a rating out of 5 and short feedback (3-5 lines) for improvement in JSON format with fields 'rating' and 'feedback'.`;
