@@ -43,10 +43,21 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
   const [isLoading, setIsLoading] = useState(false);
   const [lastProcessedIndex, setLastProcessedIndex] = useState(0);
 
-  // Tracks whether the USER intends to be recording (vs browser auto-stopping)
+  // Separate state (for re-renders) + ref (for async/effect logic)
+  const [isUserRecording, setIsUserRecording] = useState(false);
   const isUserRecordingRef = useRef(false);
-  // Stable ref to userAnswer so async effects always see latest value
+
+  // Prevents double-save when manual stop + auto-stop both fire
+  const isSavingRef = useRef(false);
+
+  // Always holds the latest userAnswer for use inside async functions
   const userAnswerRef = useRef('');
+
+  // Helper to keep ref and state in sync
+  const setRecordingState = (val: boolean) => {
+    isUserRecordingRef.current = val;
+    setIsUserRecording(val);
+  };
 
   useEffect(() => {
     userAnswerRef.current = userAnswer;
@@ -67,7 +78,7 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
     useLegacyResults: false,
   });
 
-  // Accumulate transcript results
+  // Accumulate transcript chunks into userAnswer
   useEffect(() => {
     if (results.length > lastProcessedIndex) {
       const newResults = results.slice(lastProcessedIndex);
@@ -80,39 +91,45 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
     }
   }, [results, lastProcessedIndex]);
 
-  // Core fix: detect when browser auto-stops (isRecording flips false while user still intended to record)
+  // Detects mobile browser auto-stopping (continuous: true is ignored on mobile)
+  // When that happens, save immediately instead of trying to restart
   useEffect(() => {
     if (!isRecording && isUserRecordingRef.current) {
-      // Mobile browser killed the session — restart it automatically
-      // Small delay to let the browser reset its internal state
-      const timer = setTimeout(() => {
-        if (isUserRecordingRef.current) {
-          startSpeechToText();
-        }
-      }, 300);
-      return () => clearTimeout(timer);
+      setRecordingState(false);
+
+      const currentAnswer = userAnswerRef.current.trim();
+      if (currentAnswer.length < 10) {
+        toast('Answer is too short. Please try again.');
+        setUserAnswer('');
+        userAnswerRef.current = '';
+        setResults([]);
+        setLastProcessedIndex(0);
+        return;
+      }
+      saveUserAnswer(currentAnswer);
     }
   }, [isRecording]);
 
   const handleRecordingToggle = () => {
     if (isUserRecordingRef.current) {
       // User manually stopping
-      isUserRecordingRef.current = false;
+      setRecordingState(false);
       stopSpeechToText();
 
-      // Use ref to get latest answer since state may lag
       const currentAnswer = userAnswerRef.current.trim();
       if (currentAnswer.length < 10) {
         toast('Answer is too short. Please try again.');
         setUserAnswer('');
+        userAnswerRef.current = '';
         setResults([]);
         setLastProcessedIndex(0);
         return;
       }
       saveUserAnswer(currentAnswer);
     } else {
-      // User starting
-      isUserRecordingRef.current = true;
+      // User starting a new recording — reset everything
+      setRecordingState(true);
+      isSavingRef.current = false;
       setUserAnswer('');
       userAnswerRef.current = '';
       setResults([]);
@@ -125,8 +142,10 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
     return `Question: ${interviewQuestion[activeIndex]?.text}, User Answer: ${answer}. Based on this, provide a rating out of 5 and short feedback (3-5 lines) for improvement in JSON format with fields 'rating' and 'feedback'.`;
   };
 
-  // Now accepts answer as a parameter — no longer relies on stale state
   const saveUserAnswer = async (answer: string) => {
+    // Guard against double-save (manual stop + auto-stop firing together)
+    if (isSavingRef.current) return;
+    isSavingRef.current = true;
     setIsLoading(true);
 
     try {
@@ -161,11 +180,9 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
       toast.error('Failed to save answer.');
     } finally {
       setIsLoading(false);
+      isSavingRef.current = false;
     }
   };
-
-  // Derive display state from ref + isRecording
-  const showAsRecording = isUserRecordingRef.current;
 
   return (
     <div className="flex flex-col">
@@ -178,18 +195,12 @@ const RecordAnswerSection = ({ interviewQuestion, activeIndex, interviewData, on
         disabled={isLoading}
         onClick={handleRecordingToggle}
         className={`flex items-center gap-2 px-6 py-3 font-medium transition-colors ${
-          showAsRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
+          isUserRecording ? 'bg-red-500 hover:bg-red-600' : 'bg-primary hover:bg-primary/90'
         }`}
       >
-        <Mic className={`h-5 w-5 ${showAsRecording ? 'animate-pulse' : ''}`} />
-        {isLoading ? 'Saving...' : showAsRecording ? 'Stop Recording' : 'Record Answer'}
+        <Mic className={`h-5 w-5 ${isUserRecording ? 'animate-pulse' : ''}`} />
+        {isLoading ? 'Saving...' : isUserRecording ? 'Stop Recording' : 'Record Answer'}
       </Button>
-
-      {userAnswer && showAsRecording && (
-        <p className="mt-3 text-sm text-muted-foreground text-center px-4">
-          {userAnswer}
-        </p>
-      )}
     </div>
   );
 };
